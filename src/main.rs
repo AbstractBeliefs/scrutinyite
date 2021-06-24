@@ -1,13 +1,13 @@
-use irc::client::prelude::*;
 use futures::prelude::*;
-use std::time::{Duration, Instant};
-use std::collections::HashMap;
+use irc::client::prelude::*;
 use std::collections::hash_map::Entry::{Occupied, Vacant};
+use std::collections::HashMap;
+use std::time::{Duration, Instant};
 
 #[tokio::main]
 async fn main() -> Result<(), failure::Error> {
-    let idle_threshold = (4 * 60 * 60);
-    let deadline = Duration::from_secs(15 * 60);
+    let idle_threshold = 4 * 60 * 60;               // 4h to be considered idle
+    let deadline = Duration::from_secs(15 * 60);    // 15m to reply to liveness check
     let alertchan = "###kline".to_string();
     let mut watchdog = tokio::time::interval(Duration::from_secs(5 * 60));
     let mut whois_slot = tokio::time::interval(Duration::from_secs(11));
@@ -19,7 +19,7 @@ async fn main() -> Result<(), failure::Error> {
         channels: vec![alertchan.clone()],
         ..Config::default()
     };
-    
+
     let mut client = Client::from_config(config).await?;
     let mut stream = client.stream()?;
     let mut on_call: Vec<String> = Vec::new();
@@ -35,7 +35,7 @@ async fn main() -> Result<(), failure::Error> {
             _ = watchdog.tick() => {
                 client.send(Command::STATS(Some("p".to_owned()), None))?;
             }
-           
+
             // Every 10+1 seconds, use our new allocation of remote whois to check any unwhoised
             // staff we've found
             _ = whois_slot.tick() => {
@@ -132,9 +132,10 @@ async fn main() -> Result<(), failure::Error> {
 
 fn remove_destaffed(
     overdue_list: HashMap<String, (u64, Instant, bool)>,
-    on_call_list: &Vec<String>
+    on_call_list: &Vec<String>,
 ) -> HashMap<String, (u64, Instant, bool)> {
-    return overdue_list.into_iter()
+    return overdue_list
+        .into_iter()
         .filter(|(staffer, _)| on_call_list.contains(&staffer))
         .collect();
 }
