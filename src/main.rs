@@ -2,29 +2,32 @@ use irc::client::prelude::*;
 use futures::prelude::*;
 use std::time::{Duration, Instant};
 use std::collections::HashMap;
+use std::collections::hash_map::Entry::{Occupied, Vacant};
 
 #[tokio::main]
 async fn main() -> Result<(), failure::Error> {
+    let idle_threshold = (4 * 60 * 60);
+    let deadline = Duration::from_secs(15 * 60);
+    let alertchan = "###kline".to_string();
+    let mut watchdog = tokio::time::interval(Duration::from_secs(5 * 60));
+    let mut whois_slot = tokio::time::interval(Duration::from_secs(11));
+
     let config = Config {
         nickname: Some("scrutinyite".to_owned()),
         username: Some("scrutiny".to_owned()),
         server: Some("irc.libera.chat".to_owned()),
-        channels: vec!["###kline".to_owned()],
+        channels: vec![alertchan.clone()],
         ..Config::default()
     };
     
     let mut client = Client::from_config(config).await?;
-    client.identify()?;
-
     let mut stream = client.stream()?;
-    let mut watchdog = tokio::time::interval(Duration::from_secs(5 * 60));
-    let mut whois_slot = tokio::time::interval(Duration::from_secs(11));
     let mut on_call: Vec<String> = Vec::new();
     let mut to_whois: Vec<String> = Vec::new();
     // staff:(idletime, spotted time, tattled)
     let mut overdue: HashMap<String, (u64, Instant, bool)> = HashMap::new();
-    let idle_threshold = 60;
-    let deadline = Duration::from_secs(1 * 60);
+
+    client.identify()?;
 
     loop {
         tokio::select! {
@@ -78,9 +81,6 @@ async fn main() -> Result<(), failure::Error> {
                         let idletime = params[1].parse::<u64>().unwrap();
                         println!("got an idletime: {} is idle {}s", staffnick, idletime);
 
-                        if staffnick != "kline" {
-                            continue;
-                        }
 
                         // check if this staffer is in our overdue list
                         // if they arent:
@@ -90,28 +90,31 @@ async fn main() -> Result<(), failure::Error> {
                         // if they are in the overdue list:
                         //   if their idletime has decreased: they've been active, remove them
                         //   otherwise: if our alert to them was > deadline, call the cops
-                        match overdue.get(&staffnick) {
-                            None => {
+
+                        match overdue.entry(staffnick.clone()) {
+                            Vacant(entry) => {
                                 if idletime > idle_threshold {
-                                    client.send_privmsg(&staffnick, "You're overdue, are you still alive?")?;
-                                    overdue.insert(staffnick, (idletime, Instant::now(), false));
+                                    if staffnick == "kline" {
+                                        client.send_privmsg(&staffnick, "You're overdue, are you still alive?")?;
+                                    }
+                                    entry.insert((idletime, Instant::now(), false));
                                 }
                             }
-                            Some((first_idle_length, spotted, _tattled)) => {
+                            Occupied(mut entry) => {
+                                let (first_idle_length, spotted, tattled) = entry.get_mut();
                                 if idletime <= *first_idle_length {
                                     println!("removing {}, idletime decreased", staffnick);
-                                    overdue.remove(&staffnick);
+                                    entry.remove();
                                 } else {
-                                    if spotted.elapsed() > deadline { // && !tattled
+                                    if spotted.elapsed() > deadline && !(*tattled) {
                                         client.send_privmsg(
-                                            &staffnick,
+                                            &alertchan,
                                             format!(
-                                                "{} has been idle more than {} hours and didn't reply to me for {} mins. They might not be around",
+                                                "{} has been idle more than {} and didn't reply to me for {}. They might not be around.",
                                                 staffnick, secs_to_time(&idletime), secs_to_time(&spotted.elapsed().as_secs())
                                             )
                                         )?;
-                                        // tattled = true;
-                                        // write tattled back into overdue[staffnick]
+                                        *tattled = true;
                                     }
                                 }
                             }
@@ -134,6 +137,9 @@ fn remove_destaffed(
         .collect();
 }
 
-fn secs_to_time(_secs: &u64) -> String {
-    "(placeholder time)".to_string()
+fn secs_to_time(secs: &u64) -> String {
+    let mut minutes = secs / 60;
+    let hours = minutes / 60;
+    minutes = minutes % 60;
+    format!("{}h{}m", hours, minutes)
 }
