@@ -110,8 +110,10 @@ async fn main() -> Result<(), failure::Error> {
                                         client.send_privmsg(
                                             &alertchan,
                                             format!(
-                                                "{} has been idle more than {} and didn't reply to me for {}. They might not be around.",
-                                                staffnick, secs_to_time(&idletime), secs_to_time(&spotted.elapsed().as_secs())
+                                                "{} has been idle more than {} and didn't reply to me for {}. \
+                                                They might not be around.",
+                                                staffnick, secs_to_time(&idletime),
+                                                secs_to_time(&spotted.elapsed().as_secs())
                                             )
                                         )?;
                                         *tattled = true;
