@@ -110,8 +110,7 @@ async fn main() -> Result<(), failure::Error> {
                                                 staffnick, secs_to_time(&idletime), secs_to_time(&spotted.elapsed().as_secs())
                                             )
                                         );
-                                        overdue.remove(&staffnick);
-                                        overdue.insert(staffnick, (*first_idle_length, *spotted, true));
+                                        *tattled = true;
                                     }
                                 }
                             }
