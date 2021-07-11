@@ -90,28 +90,28 @@ async fn main() -> Result<(), failure::Error> {
                         // if they are in the overdue list:
                         //   if their idletime has decreased: they've been active, remove them
                         //   otherwise: if our alert to them was > deadline, call the cops
-                        match overdue.get(&staffnick) {
+                        match overdue.get_mut(&staffnick) {
                             None => {
                                 if idletime > idle_threshold {
-                                    client.send_privmsg(&staffnick, "You're overdue, are you still alive?")?;
+                                    client.send_privmsg(&staffnick, "You're overdue, are you still alive?");
                                     overdue.insert(staffnick, (idletime, Instant::now(), false));
                                 }
                             }
-                            Some((first_idle_length, spotted, _tattled)) => {
+                            Some((first_idle_length, spotted, tattled)) => {
                                 if idletime <= *first_idle_length {
                                     println!("removing {}, idletime decreased", staffnick);
                                     overdue.remove(&staffnick);
                                 } else {
-                                    if spotted.elapsed() > deadline { // && !tattled
+                                    if spotted.elapsed() > deadline && !(*tattled) {
                                         client.send_privmsg(
                                             &staffnick,
                                             format!(
                                                 "{} has been idle more than {} hours and didn't reply to me for {} mins. They might not be around",
                                                 staffnick, secs_to_time(&idletime), secs_to_time(&spotted.elapsed().as_secs())
                                             )
-                                        )?;
-                                        // tattled = true;
-                                        // write tattled back into overdue[staffnick]
+                                        );
+                                        overdue.remove(&staffnick);
+                                        overdue.insert(staffnick, (*first_idle_length, *spotted, true));
                                     }
                                 }
                             }
